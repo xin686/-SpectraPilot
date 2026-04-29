@@ -14,7 +14,7 @@ import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'usb2000-secret'
-socketio = SocketIO(app, async_mode='threading', cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
 ctrl = SpectrometerController()
 
@@ -22,20 +22,18 @@ ctrl = SpectrometerController()
 _streaming = False
 _stream_interval = 0.2   # 秒
 _scans_to_average = 1
-_stream_thread = None
 
 
 def _stream_loop():
-    print("stream loop started")
-    global _streaming
     while _streaming:
         try:
             wl, inten = ctrl.get_spectrum(_scans_to_average)
-            socketio.emit('spectrum_data', {'wavelengths': wl, 'intensities': inten})
+            socketio.emit('spectrum_data', {
+                'wavelengths': wl,
+                'intensities': inten,
+            })
         except Exception as e:
             socketio.emit('error', {'msg': str(e)})
-            _streaming = False
-            break
         time.sleep(_stream_interval)
 
 
@@ -154,16 +152,12 @@ def api_download(filename):
 
 @socketio.on('start_stream')
 def ws_start_stream(data):
-    print("WS start_stream received:", data)
-    global _streaming, _stream_interval, _stream_thread
-    if _streaming:
-        emit('stream_status', {'streaming': True})
-        return
+    global _streaming, _stream_interval
     interval = float(data.get('interval', 0.2)) if data else 0.2
     _stream_interval = max(0.05, interval)
     _streaming = True
-    _stream_thread = threading.Thread(target=_stream_loop, daemon=True)
-    _stream_thread.start()
+    t = threading.Thread(target=_stream_loop, daemon=True)
+    t.start()
     emit('stream_status', {'streaming': True})
 
 
